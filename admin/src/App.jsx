@@ -14,7 +14,14 @@ export default function App() {
       const now = new Date();
       const todayStart = new Date(now.setHours(0, 0, 0, 0)).toISOString();
 
-      const [{ count: totalLivres }, { count: todayLivres }, last, types, queue] = await Promise.all([
+      const [
+        { count: totalLivres },
+        { count: todayLivres },
+        last,
+        types,
+        queueCounts,
+        { count: totalQueue }
+      ] = await Promise.all([
         supabase.from("livres_generes").select("*", { count: "exact", head: true }),
         supabase.from("livres_generes").select("*", { count: "exact", head: true }).gte("created_at", todayStart),
         supabase.from("livres_generes").select("created_at").order("created_at", { ascending: false }).limit(1),
@@ -35,16 +42,29 @@ export default function App() {
               .lte("created_at", date);
             return { [`+${h}h`]: count };
           })
-        ).then((arr) => Object.assign({}, ...arr))
+        ).then(async (arr) => {
+          const combined = Object.assign({}, ...arr);
+          const { count: lessThan1h } = await supabase
+            .from("generation_queue")
+            .select("*", { count: "exact", head: true })
+            .eq("status", "pending")
+            .gt("created_at", new Date(Date.now() - 3600 * 1000).toISOString());
+          return { "<1h": lessThan1h, ...combined };
+        }),
+        supabase
+          .from("generation_queue")
+          .select("*", { count: "exact", head: true })
+          .eq("status", "pending")
       ]);
 
       setStats({
         totalLivres,
         todayLivres,
-        totalUsers: "—", // Remplacé par placeholder car les utilisateurs sont dans auth.users, inaccessible depuis client
+        totalUsers: "—",
         dernierLivre: last.data?.[0]?.created_at,
         types,
-        queue
+        queue: queueCounts,
+        totalQueue
       });
     }
 
@@ -81,7 +101,7 @@ export default function App() {
               </ul>
             </div>
             <div className="bg-white p-4 rounded shadow">
-              ⏱️ File d’attente (en attente depuis…) :
+              ⏱️ File d’attente totale : <strong>{stats.totalQueue}</strong>
               <ul className="mt-2 text-sm">
                 {Object.entries(stats.queue).map(([h, c]) => (
                   <li key={h}>{h} : {c}</li>
