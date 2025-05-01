@@ -7,21 +7,18 @@ const supabase = createClient(
 );
 
 export default function App() {
-  const [livres, setLivres] = useState([]);
   const [stats, setStats] = useState(null);
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function fetchStats() {
       const now = new Date();
       const todayStart = new Date(now.setHours(0, 0, 0, 0)).toISOString();
 
-      const [{ count: totalLivres }, { count: todayLivres }, users, last, types, queue] = await Promise.all([
-        supabase.from("responses").select("*", { count: "exact", head: true }),
-        supabase.from("responses").select("*", { count: "exact", head: true }).gte("created_at", todayStart),
-        supabase.from("responses").select("user_id", { count: "exact", head: true }).neq("user_id", null),
-        supabase.from("responses").select("created_at").order("created_at", { ascending: false }).limit(1),
-        supabase.from("responses").select("type").then(({ data }) => {
+      const [{ count: totalLivres }, { count: todayLivres }, last, types, queue] = await Promise.all([
+        supabase.from("livres_generes").select("*", { count: "exact", head: true }),
+        supabase.from("livres_generes").select("*", { count: "exact", head: true }).gte("created_at", todayStart),
+        supabase.from("livres_generes").select("created_at").order("created_at", { ascending: false }).limit(1),
+        supabase.from("livres_generes").select("type").then(({ data }) => {
           const counts = data.reduce((acc, row) => {
             acc[row.type] = (acc[row.type] || 0) + 1;
             return acc;
@@ -44,24 +41,14 @@ export default function App() {
       setStats({
         totalLivres,
         todayLivres,
-        totalUsers: users?.count || 0,
+        totalUsers: "—", // Remplacé par placeholder car les utilisateurs sont dans auth.users, inaccessible depuis client
         dernierLivre: last.data?.[0]?.created_at,
         types,
         queue
       });
     }
 
-    async function fetchLivres() {
-      const { data } = await supabase
-        .from("responses")
-        .select("*")
-        .order("created_at", { ascending: false });
-      setLivres(data || []);
-      setLoading(false);
-    }
-
     fetchStats();
-    fetchLivres();
   }, []);
 
   return (
@@ -102,30 +89,6 @@ export default function App() {
               </ul>
             </div>
           </div>
-        )}
-
-        <h2 className="text-2xl font-semibold mb-4">📚 Livres générés</h2>
-        {loading ? (
-          <p>Chargement...</p>
-        ) : (
-          <table className="w-full table-auto bg-white shadow rounded">
-            <thead>
-              <tr className="bg-gray-100 text-left">
-                <th className="px-4 py-2">Utilisateur</th>
-                <th className="px-4 py-2">Type</th>
-                <th className="px-4 py-2">Date</th>
-              </tr>
-            </thead>
-            <tbody>
-              {livres.map((livre) => (
-                <tr key={livre.id} className="border-t hover:bg-gray-50">
-                  <td className="px-4 py-2">{livre.user_id}</td>
-                  <td className="px-4 py-2">{livre.type}</td>
-                  <td className="px-4 py-2">{new Date(livre.created_at).toLocaleString()}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
         )}
       </main>
     </div>
