@@ -8,14 +8,59 @@ const supabase = createClient(
 
 export default function App() {
   const [livres, setLivres] = useState([]);
+  const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    async function fetchStats() {
+      const now = new Date();
+      const todayStart = new Date(now.setHours(0, 0, 0, 0)).toISOString();
+
+      const [{ count: totalLivres }, { count: todayLivres }, users, last, types, queue] = await Promise.all([
+        supabase.from("responses").select("*", { count: "exact", head: true }),
+        supabase.from("responses").select("*", { count: "exact", head: true }).gte("created_at", todayStart),
+        supabase.from("responses").select("user_id", { count: "exact", head: true }).neq("user_id", null),
+        supabase.from("responses").select("created_at").order("created_at", { ascending: false }).limit(1),
+        supabase.from("responses").select("type").then(({ data }) => {
+          const counts = data.reduce((acc, row) => {
+            acc[row.type] = (acc[row.type] || 0) + 1;
+            return acc;
+          }, {});
+          return counts;
+        }),
+        Promise.all(
+          Array.from({ length: 10 }, (_, i) => i + 1).map(async (h) => {
+            const date = new Date(Date.now() - h * 3600 * 1000).toISOString();
+            const { count } = await supabase
+              .from("generation_queue")
+              .select("*", { count: "exact", head: true })
+              .eq("status", "pending")
+              .lte("created_at", date);
+            return { [`+${h}h`]: count };
+          })
+        ).then((arr) => Object.assign({}, ...arr))
+      ]);
+
+      setStats({
+        totalLivres,
+        todayLivres,
+        totalUsers: users?.count || 0,
+        dernierLivre: last.data?.[0]?.created_at,
+        types,
+        queue
+      });
+    }
+
     async function fetchLivres() {
-      const { data } = await supabase.from("livres_generes").select("*").order("created_at", { ascending: false });
+      const { data } = await supabase
+        .from("responses")
+        .select("*")
+        .order("created_at", { ascending: false });
       setLivres(data || []);
       setLoading(false);
     }
+
+    fetchStats();
     fetchLivres();
   }, []);
 
@@ -32,8 +77,34 @@ export default function App() {
       </aside>
 
       <main className="flex-1 bg-gray-50 p-6">
-        <h2 className="text-2xl font-semibold mb-4">📚 Livres générés</h2>
+        <h2 className="text-2xl font-semibold mb-6">📊 Statistiques générales</h2>
 
+        {stats && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-10">
+            <div className="bg-white p-4 rounded shadow">📘 Total livres : <strong>{stats.totalLivres}</strong></div>
+            <div className="bg-white p-4 rounded shadow">👥 Utilisateurs : <strong>{stats.totalUsers}</strong></div>
+            <div className="bg-white p-4 rounded shadow">📅 Aujourd’hui : <strong>{stats.todayLivres}</strong></div>
+            <div className="bg-white p-4 rounded shadow">🕒 Dernier livre : <strong>{new Date(stats.dernierLivre).toLocaleString()}</strong></div>
+            <div className="bg-white p-4 rounded shadow">
+              📚 Répartition types :
+              <ul className="mt-2 text-sm">
+                {Object.entries(stats.types).map(([k, v]) => (
+                  <li key={k}>{k} : {v}</li>
+                ))}
+              </ul>
+            </div>
+            <div className="bg-white p-4 rounded shadow">
+              ⏱️ File d’attente (en attente depuis…) :
+              <ul className="mt-2 text-sm">
+                {Object.entries(stats.queue).map(([h, c]) => (
+                  <li key={h}>{h} : {c}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        )}
+
+        <h2 className="text-2xl font-semibold mb-4">📚 Livres générés</h2>
         {loading ? (
           <p>Chargement...</p>
         ) : (
@@ -43,7 +114,6 @@ export default function App() {
                 <th className="px-4 py-2">Utilisateur</th>
                 <th className="px-4 py-2">Type</th>
                 <th className="px-4 py-2">Date</th>
-                <th className="px-4 py-2">Lien</th>
               </tr>
             </thead>
             <tbody>
@@ -52,11 +122,6 @@ export default function App() {
                   <td className="px-4 py-2">{livre.user_id}</td>
                   <td className="px-4 py-2">{livre.type}</td>
                   <td className="px-4 py-2">{new Date(livre.created_at).toLocaleString()}</td>
-                  <td className="px-4 py-2">
-                    <a href={livre.url} target="_blank" rel="noreferrer" className="text-purple-600 hover:underline">
-                      Voir
-                    </a>
-                  </td>
                 </tr>
               ))}
             </tbody>
