@@ -70,7 +70,12 @@ export default function App() {
       const group = {};
       responsesAll.data.forEach(row => {
         const params = row.params || {};
-        const clef = [params.type, params.vue, params.enfants, params.format].filter(Boolean).join(" | ");
+        const clef = [
+          params.type ?? "NULL",
+          params.vue ?? "NULL",
+          params.enfants ?? "NULL",
+          params.format ?? "NULL"
+        ].join(" | ");
 
         if (!group[clef]) {
           group[clef] = {
