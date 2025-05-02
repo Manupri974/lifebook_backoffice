@@ -1,4 +1,4 @@
-// MODIFIÉ : Ajout total global et menus déroulants de filtre par colonne
+// MODIFIÉ : Ajout compteur de livres réels par interview et alerte multi-livres
 import { useEffect, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 
@@ -55,7 +55,10 @@ export default function App() {
       ]);
 
       const previewSet = new Set(previews.data.map(p => p.interview_id));
-      const livreSet = new Set(livres.data.map(l => l.interview_id));
+      const livreMap = livres.data.reduce((acc, row) => {
+        acc[row.interview_id] = (acc[row.interview_id] || 0) + 1;
+        return acc;
+      }, {});
 
       const group = {};
       const unique = { type: new Set(), vue: new Set(), format: new Set(), age: new Set(), dest: new Set(), qui: new Set(), enfants: new Set() };
@@ -77,12 +80,18 @@ export default function App() {
             total: 0,
             avecPreview: 0,
             avecLivre: 0,
+            multiLivres: 0,
+            totalLivreCount: 0,
             ...JSON.parse(key)
           };
         }
 
+        const livresAssocies = livreMap[row.id] || 0;
+
         group[key].total++;
-        if (livreSet.has(row.id)) group[key].avecLivre++;
+        group[key].totalLivreCount += livresAssocies;
+        if (livresAssocies > 1) group[key].multiLivres++;
+        if (livresAssocies >= 1) group[key].avecLivre++;
         else if (previewSet.has(row.id)) group[key].avecPreview++;
 
         Object.keys(unique).forEach(k => unique[k].add(p[k] ?? "NULL"));
@@ -94,8 +103,9 @@ export default function App() {
         acc.total += r.total;
         acc.preview += r.avecPreview;
         acc.livre += r.avecLivre;
+        acc.livreReels += r.totalLivreCount;
         return acc;
-      }, { total: 0, preview: 0, livre: 0 });
+      }, { total: 0, preview: 0, livre: 0, livreReels: 0 });
 
       setStats({
         totalLivres,
@@ -117,118 +127,3 @@ export default function App() {
 
     fetchStats();
   }, []);
-
-  const lignesFiltrees = stats?.lignes?.filter(row => {
-    return Object.entries(filter).every(([key, value]) => !value || row[key] === value);
-  });
-
-  function renderSelect(field, label) {
-    return (
-      <label className="block text-sm mr-4">
-        {label} :
-        <select
-          className="ml-2 border rounded px-2 py-1"
-          value={filter[field] || ""}
-          onChange={(e) => setFilter(prev => ({ ...prev, [field]: e.target.value || undefined }))}
-        >
-          <option value="">(Tous)</option>
-          {options[field]?.map(opt => (
-            <option key={opt} value={opt}>{opt}</option>
-          ))}
-        </select>
-      </label>
-    );
-  }
-
-  return (
-    <div className="flex min-h-screen">
-      <aside className="w-64 bg-gray-800 text-white p-4 space-y-4">
-        <h1 className="text-xl font-bold">📘 LifeBook Admin</h1>
-        <nav className="space-y-2">
-          <a href="#" className="block hover:text-purple-300">Dashboard</a>
-          <a href="#" className="block hover:text-purple-300">Utilisateurs</a>
-          <a href="#" className="block hover:text-purple-300">File d'attente</a>
-          <a href="#" className="block hover:text-purple-300">API & Logs</a>
-        </nav>
-      </aside>
-
-      <main className="flex-1 bg-gray-50 p-6">
-        <h2 className="text-2xl font-semibold mb-6">📊 Statistiques générales</h2>
-
-        {stats && (
-          <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              <div className="bg-white p-4 rounded shadow">📘 Total livres : <strong>{stats.totalLivres}</strong></div>
-              <div className="bg-white p-4 rounded shadow">👥 Utilisateurs : <strong>{stats.totalUsers}</strong></div>
-              <div className="bg-white p-4 rounded shadow">📅 Aujourd’hui : <strong>{stats.todayLivres}</strong></div>
-              <div className="bg-white p-4 rounded shadow">🕒 Dernier livre : <strong>{new Date(stats.dernierLivre).toLocaleString()}</strong></div>
-              <div className="bg-white p-4 rounded shadow">
-                ⏱️ File d’attente totale : <strong>{stats.totalQueue}</strong>
-                <ul className="mt-2 text-sm">
-                  {Object.entries(stats.queue).map(([h, c]) => (
-                    <li key={h}>{h} : {c}</li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-
-            <div className="bg-white p-4 rounded shadow">
-              📄 Répartition des interviews par paramètres : ({lignesFiltrees.length} variantes affichées)
-
-              <div className="flex flex-wrap gap-4 mb-4">
-                {renderSelect("type", "Type")}
-                {renderSelect("vue", "Vue")}
-                {renderSelect("format", "Format")}
-                {renderSelect("age", "Âge")}
-                {renderSelect("dest", "Dest")}
-                {renderSelect("qui", "Qui")}
-                {renderSelect("enfants", "Enfants")}
-              </div>
-
-              <div className="overflow-x-auto">
-                <table className="w-full mt-2 text-sm">
-                  <thead>
-                    <tr className="bg-gray-100">
-                      <th className="px-2 py-1">Type</th>
-                      <th className="px-2 py-1">Vue</th>
-                      <th className="px-2 py-1">Format</th>
-                      <th className="px-2 py-1">Age</th>
-                      <th className="px-2 py-1">Dest</th>
-                      <th className="px-2 py-1">Qui</th>
-                      <th className="px-2 py-1">Enfants</th>
-                      <th className="px-2 py-1">Total</th>
-                      <th className="px-2 py-1">Preview</th>
-                      <th className="px-2 py-1">Livre</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {lignesFiltrees.map((row, idx) => (
-                      <tr key={idx} className="border-t">
-                        <td className="px-2 py-1">{row.type}</td>
-                        <td className="px-2 py-1">{row.vue}</td>
-                        <td className="px-2 py-1">{row.format}</td>
-                        <td className="px-2 py-1">{row.age}</td>
-                        <td className="px-2 py-1">{row.dest}</td>
-                        <td className="px-2 py-1">{row.qui}</td>
-                        <td className="px-2 py-1">{row.enfants}</td>
-                        <td className="px-2 py-1">{row.total}</td>
-                        <td className="px-2 py-1">{row.avecPreview}</td>
-                        <td className="px-2 py-1">{row.avecLivre}</td>
-                      </tr>
-                    ))}
-                    <tr className="font-bold border-t bg-gray-50">
-                      <td colSpan={7} className="px-2 py-1 text-right">Total général</td>
-                      <td className="px-2 py-1">{stats.totalGlobal.total}</td>
-                      <td className="px-2 py-1">{stats.totalGlobal.preview}</td>
-                      <td className="px-2 py-1">{stats.totalGlobal.livre}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        )}
-      </main>
-    </div>
-  );
-}
