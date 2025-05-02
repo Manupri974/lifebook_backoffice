@@ -1,4 +1,4 @@
-// MODIFIÉ : Ajout total global et début de filtres par colonnes
+// MODIFIÉ : Ajout total global et menus déroulants de filtre par colonne
 import { useEffect, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 
@@ -10,6 +10,7 @@ const supabase = createClient(
 export default function App() {
   const [stats, setStats] = useState(null);
   const [filter, setFilter] = useState({});
+  const [options, setOptions] = useState({});
 
   useEffect(() => {
     async function fetchStats() {
@@ -57,6 +58,8 @@ export default function App() {
       const livreSet = new Set(livres.data.map(l => l.interview_id));
 
       const group = {};
+      const unique = { type: new Set(), vue: new Set(), format: new Set(), age: new Set(), dest: new Set(), qui: new Set(), enfants: new Set() };
+
       responsesAll.data.forEach(row => {
         const p = row.params || {};
         const key = JSON.stringify({
@@ -81,6 +84,8 @@ export default function App() {
         group[key].total++;
         if (livreSet.has(row.id)) group[key].avecLivre++;
         else if (previewSet.has(row.id)) group[key].avecPreview++;
+
+        Object.keys(unique).forEach(k => unique[k].add(p[k] ?? "NULL"));
       });
 
       const lignes = Object.values(group);
@@ -102,6 +107,12 @@ export default function App() {
         lignes,
         totalGlobal
       });
+
+      const formattedOptions = {};
+      Object.entries(unique).forEach(([key, values]) => {
+        formattedOptions[key] = Array.from(values).sort();
+      });
+      setOptions(formattedOptions);
     }
 
     fetchStats();
@@ -110,6 +121,24 @@ export default function App() {
   const lignesFiltrees = stats?.lignes?.filter(row => {
     return Object.entries(filter).every(([key, value]) => !value || row[key] === value);
   });
+
+  function renderSelect(field, label) {
+    return (
+      <label className="block text-sm mr-4">
+        {label} :
+        <select
+          className="ml-2 border rounded px-2 py-1"
+          value={filter[field] || ""}
+          onChange={(e) => setFilter(prev => ({ ...prev, [field]: e.target.value || undefined }))}
+        >
+          <option value="">(Tous)</option>
+          {options[field]?.map(opt => (
+            <option key={opt} value={opt}>{opt}</option>
+          ))}
+        </select>
+      </label>
+    );
+  }
 
   return (
     <div className="flex min-h-screen">
@@ -145,8 +174,19 @@ export default function App() {
 
             <div className="bg-white p-4 rounded shadow">
               📄 Répartition des interviews par paramètres : ({lignesFiltrees.length} variantes affichées)
+
+              <div className="flex flex-wrap gap-4 mb-4">
+                {renderSelect("type", "Type")}
+                {renderSelect("vue", "Vue")}
+                {renderSelect("format", "Format")}
+                {renderSelect("age", "Âge")}
+                {renderSelect("dest", "Dest")}
+                {renderSelect("qui", "Qui")}
+                {renderSelect("enfants", "Enfants")}
+              </div>
+
               <div className="overflow-x-auto">
-                <table className="w-full mt-4 text-sm">
+                <table className="w-full mt-2 text-sm">
                   <thead>
                     <tr className="bg-gray-100">
                       <th className="px-2 py-1">Type</th>
