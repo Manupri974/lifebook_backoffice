@@ -13,6 +13,10 @@ export default function App() {
     async function fetchStats() {
       const now = new Date();
       const todayStart = new Date(now.setHours(0, 0, 0, 0)).toISOString();
+      const nowISO = new Date().toISOString();
+      const minus24h = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+      const minus72h = new Date(Date.now() - 72 * 3600 * 1000).toISOString();
+      const minus1w = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString();
 
       const [
         { count: totalLivres },
@@ -20,7 +24,10 @@ export default function App() {
         last,
         types,
         queueCounts,
-        { count: totalQueue }
+        { count: totalQueue },
+        responsesAll,
+        previews,
+        livres
       ] = await Promise.all([
         supabase.from("livres_generes").select("*", { count: "exact", head: true }),
         supabase.from("livres_generes").select("*", { count: "exact", head: true }).gte("created_at", todayStart),
@@ -51,11 +58,39 @@ export default function App() {
             .gt("created_at", new Date(Date.now() - 3600 * 1000).toISOString());
           return { "<1h": lessThan1h, ...combined };
         }),
-        supabase
-          .from("generation_queue")
-          .select("*", { count: "exact", head: true })
-          .eq("status", "pending")
+        supabase.from("generation_queue").select("*", { count: "exact", head: true }).eq("status", "pending"),
+        supabase.from("responses").select("id, created_at, params"),
+        supabase.from("preview").select("interview_id"),
+        supabase.from("livres_generes").select("interview_id")
       ]);
+
+      const previewSet = new Set(previews.data.map(p => p.interview_id));
+      const livreSet = new Set(livres.data.map(l => l.interview_id));
+
+      const group = {};
+      responsesAll.data.forEach(row => {
+        const params = row.params || {};
+        const clef = [params.type, params.vue, params.enfants, params.format].filter(Boolean).join(" | ");
+
+        if (!group[clef]) {
+          group[clef] = {
+            total: 0,
+            avecPreview: 0,
+            avecLivre: 0,
+            enCours: 0
+          };
+        }
+
+        group[clef].total++;
+
+        if (livreSet.has(row.id)) {
+          group[clef].avecLivre++;
+        } else if (previewSet.has(row.id)) {
+          group[clef].avecPreview++;
+        } else {
+          group[clef].enCours++;
+        }
+      });
 
       setStats({
         totalLivres,
@@ -64,7 +99,8 @@ export default function App() {
         dernierLivre: last.data?.[0]?.created_at,
         types,
         queue: queueCounts,
-        totalQueue
+        totalQueue,
+        interviews: group
       });
     }
 
@@ -107,6 +143,31 @@ export default function App() {
                   <li key={h}>{h} : {c}</li>
                 ))}
               </ul>
+            </div>
+            <div className="bg-white p-4 rounded shadow col-span-full">
+              🗂️ Interviews par configuration :
+              <table className="w-full mt-2 text-sm">
+                <thead>
+                  <tr className="bg-gray-100">
+                    <th className="text-left px-2 py-1">Config</th>
+                    <th className="text-left px-2 py-1">Total</th>
+                    <th className="text-left px-2 py-1">En cours</th>
+                    <th className="text-left px-2 py-1">Avec preview</th>
+                    <th className="text-left px-2 py-1">Livre généré</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.entries(stats.interviews).map(([config, data]) => (
+                    <tr key={config} className="border-b">
+                      <td className="px-2 py-1 font-semibold">{config}</td>
+                      <td className="px-2 py-1">{data.total}</td>
+                      <td className="px-2 py-1">{data.enCours}</td>
+                      <td className="px-2 py-1">{data.avecPreview}</td>
+                      <td className="px-2 py-1">{data.avecLivre}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
         )}
