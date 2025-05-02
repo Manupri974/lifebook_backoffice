@@ -1,4 +1,4 @@
-// MODIFIÉ : Vision tableau avec colonnes paramétriques conservée, mais synthétique par combinaison
+// MODIFIÉ : Ajout total global et début de filtres par colonnes
 import { useEffect, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 
@@ -9,6 +9,7 @@ const supabase = createClient(
 
 export default function App() {
   const [stats, setStats] = useState(null);
+  const [filter, setFilter] = useState({});
 
   useEffect(() => {
     async function fetchStats() {
@@ -84,6 +85,13 @@ export default function App() {
 
       const lignes = Object.values(group);
 
+      const totalGlobal = lignes.reduce((acc, r) => {
+        acc.total += r.total;
+        acc.preview += r.avecPreview;
+        acc.livre += r.avecLivre;
+        return acc;
+      }, { total: 0, preview: 0, livre: 0 });
+
       setStats({
         totalLivres,
         todayLivres,
@@ -91,12 +99,17 @@ export default function App() {
         dernierLivre: last.data?.[0]?.created_at,
         queue: queueCounts,
         totalQueue,
-        lignes
+        lignes,
+        totalGlobal
       });
     }
 
     fetchStats();
   }, []);
+
+  const lignesFiltrees = stats?.lignes?.filter(row => {
+    return Object.entries(filter).every(([key, value]) => !value || row[key] === value);
+  });
 
   return (
     <div className="flex min-h-screen">
@@ -131,7 +144,7 @@ export default function App() {
             </div>
 
             <div className="bg-white p-4 rounded shadow">
-              📄 Répartition des interviews par paramètres : ({stats.lignes.length} variantes)
+              📄 Répartition des interviews par paramètres : ({lignesFiltrees.length} variantes affichées)
               <div className="overflow-x-auto">
                 <table className="w-full mt-4 text-sm">
                   <thead>
@@ -144,12 +157,12 @@ export default function App() {
                       <th className="px-2 py-1">Qui</th>
                       <th className="px-2 py-1">Enfants</th>
                       <th className="px-2 py-1">Total</th>
-                      <th className="px-2 py-1">Avec preview</th>
-                      <th className="px-2 py-1">Avec livre</th>
+                      <th className="px-2 py-1">Preview</th>
+                      <th className="px-2 py-1">Livre</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {stats.lignes.map((row, idx) => (
+                    {lignesFiltrees.map((row, idx) => (
                       <tr key={idx} className="border-t">
                         <td className="px-2 py-1">{row.type}</td>
                         <td className="px-2 py-1">{row.vue}</td>
@@ -163,6 +176,12 @@ export default function App() {
                         <td className="px-2 py-1">{row.avecLivre}</td>
                       </tr>
                     ))}
+                    <tr className="font-bold border-t bg-gray-50">
+                      <td colSpan={7} className="px-2 py-1 text-right">Total général</td>
+                      <td className="px-2 py-1">{stats.totalGlobal.total}</td>
+                      <td className="px-2 py-1">{stats.totalGlobal.preview}</td>
+                      <td className="px-2 py-1">{stats.totalGlobal.livre}</td>
+                    </tr>
                   </tbody>
                 </table>
               </div>
